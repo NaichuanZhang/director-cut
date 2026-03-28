@@ -4,7 +4,7 @@ import { useCallback, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAudioRecorder } from "@/hooks/use-audio-recorder";
 import { useAgent } from "@/hooks/use-agent";
-import { useProjectStore } from "@/stores/project-store";
+import { useProjectStore } from "@/stores/project-store-provider";
 
 export function VoiceOrb() {
   const { isRecording, startRecording, stopRecording } = useAudioRecorder();
@@ -50,7 +50,8 @@ export function VoiceOrb() {
               exit={{ scale: 0.8, opacity: 0 }}
               className="absolute inset-0 rounded-full"
               style={{
-                background: "radial-gradient(circle, var(--accent-glow-strong) 0%, transparent 70%)",
+                background:
+                  "radial-gradient(circle, var(--accent-glow-strong) 0%, transparent 70%)",
                 animation: "recording-pulse 1.5s ease-in-out infinite",
               }}
             />
@@ -71,7 +72,10 @@ export function VoiceOrb() {
             boxShadow: isRecording
               ? "0 0 30px var(--accent-glow-strong), 0 0 60px var(--accent-glow), inset 0 -4px 8px rgba(0,0,0,0.3)"
               : "0 0 20px var(--accent-glow), inset 0 -4px 8px rgba(0,0,0,0.3)",
-            animation: !isRecording && !isStreaming ? "warm-pulse 3s ease-in-out infinite" : undefined,
+            animation:
+              !isRecording && !isStreaming
+                ? "warm-pulse 3s ease-in-out infinite"
+                : undefined,
           }}
         >
           {/* Icon */}
@@ -80,12 +84,26 @@ export function VoiceOrb() {
               animate={{ rotate: 360 }}
               transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
               className="w-5 h-5 border-2 border-t-transparent rounded-full"
-              style={{ borderColor: "var(--text-dim)", borderTopColor: "transparent" }}
+              style={{
+                borderColor: "var(--text-dim)",
+                borderTopColor: "transparent",
+              }}
             />
           ) : isRecording ? (
-            <div className="w-4 h-4 rounded-sm" style={{ background: "var(--text)" }} />
+            <div
+              className="w-4 h-4 rounded-sm"
+              style={{ background: "var(--text)" }}
+            />
           ) : (
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text)" strokeWidth="2" strokeLinecap="round">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="var(--text)"
+              strokeWidth="2"
+              strokeLinecap="round"
+            >
               <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
               <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
               <line x1="12" y1="19" x2="12" y2="23" />
@@ -97,16 +115,26 @@ export function VoiceOrb() {
       {/* State label */}
       <span
         className="text-xs tracking-widest uppercase"
-        style={{ color: isRecording ? "var(--accent)" : "var(--text-dim)", fontFamily: "var(--font-sans)" }}
+        style={{
+          color: isRecording ? "var(--accent)" : "var(--text-dim)",
+          fontFamily: "var(--font-sans)",
+        }}
       >
-        {isStreaming ? "Creating..." : isRecording ? "Listening" : "Tap to speak"}
+        {isStreaming
+          ? "Creating..."
+          : isRecording
+            ? "Listening"
+            : "Tap to speak"}
       </span>
 
       {/* Text input fallback */}
       <form onSubmit={handleTextSubmit} className="w-full max-w-xs">
         <div
           className="flex items-center gap-2 rounded-full px-4 py-2 transition-colors"
-          style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}
+          style={{
+            background: "var(--surface-2)",
+            border: "1px solid var(--border)",
+          }}
         >
           <input
             type="text"

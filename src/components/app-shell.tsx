@@ -1,6 +1,7 @@
 "use client";
 
-import { useProjectStore } from "@/stores/project-store";
+import Link from "next/link";
+import { useProjectStore } from "@/stores/project-store-provider";
 import { AgentPanel } from "./agent-panel";
 import { SceneCard } from "./scene-card";
 import { ScenePlayer } from "./scene-player";
@@ -34,6 +35,29 @@ export function AppShell() {
           style={{ borderBottom: "1px solid var(--border)" }}
         >
           <div className="flex items-center gap-3">
+            <Link
+              href="/"
+              className="flex items-center justify-center w-7 h-7 rounded-full transition-colors hover:opacity-80"
+              style={{
+                background: "var(--surface-2)",
+                color: "var(--text-dim)",
+              }}
+              aria-label="Back to projects"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M19 12H5" />
+                <path d="M12 19l-7-7 7-7" />
+              </svg>
+            </Link>
             <h1
               className="text-xl tracking-tight"
               style={{

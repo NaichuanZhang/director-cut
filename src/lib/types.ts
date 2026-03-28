@@ -40,6 +40,15 @@ export interface Project {
   readonly messages: readonly Message[];
 }
 
+export interface ProjectMeta {
+  readonly id: string;
+  readonly title: string;
+  readonly createdAt: number;
+  readonly updatedAt: number;
+  readonly sceneCount: number;
+  readonly thumbnailUrl: string | null;
+}
+
 export interface SSEEvent {
   readonly type:
     | "agent_text"

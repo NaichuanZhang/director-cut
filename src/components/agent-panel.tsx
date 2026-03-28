@@ -2,7 +2,7 @@
 
 import { useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useProjectStore } from "@/stores/project-store";
+import { useProjectStore } from "@/stores/project-store-provider";
 import { VoiceOrb } from "./voice-orb";
 
 const TOOL_LABELS: Record<string, string> = {

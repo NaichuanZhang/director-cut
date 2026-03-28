@@ -2,7 +2,7 @@
 
 import { useRef, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useProjectStore } from "@/stores/project-store";
+import { useProjectStore } from "@/stores/project-store-provider";
 
 export function ScenePlayer() {
   const scenes = useProjectStore((s) => s.scenes);
@@ -51,23 +51,40 @@ export function ScenePlayer() {
               onClick={handlePlay}
               className="w-20 h-20 rounded-full flex items-center justify-center transition-transform hover:scale-105 active:scale-95"
               style={{
-                background: "radial-gradient(circle at 40% 40%, var(--accent-bright), var(--accent-dim))",
-                boxShadow: "0 0 40px var(--accent-glow), 0 0 80px rgba(218, 119, 86, 0.1)",
+                background:
+                  "radial-gradient(circle at 40% 40%, var(--accent-bright), var(--accent-dim))",
+                boxShadow:
+                  "0 0 40px var(--accent-glow), 0 0 80px rgba(218, 119, 86, 0.1)",
               }}
             >
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="var(--text)">
+              <svg
+                width="28"
+                height="28"
+                viewBox="0 0 24 24"
+                fill="var(--text)"
+              >
                 <polygon points="6,3 20,12 6,21" />
               </svg>
             </button>
-            <span className="text-sm" style={{ color: "var(--text-dim)", fontFamily: "var(--font-display)" }}>
-              Play {completedScenes.length} scene{completedScenes.length !== 1 ? "s" : ""}
+            <span
+              className="text-sm"
+              style={{
+                color: "var(--text-dim)",
+                fontFamily: "var(--font-display)",
+              }}
+            >
+              Play {completedScenes.length} scene
+              {completedScenes.length !== 1 ? "s" : ""}
             </span>
           </>
         ) : (
           <div className="text-center px-8">
             <p
               className="text-2xl mb-2"
-              style={{ fontFamily: "var(--font-display)", color: "var(--text-dim)" }}
+              style={{
+                fontFamily: "var(--font-display)",
+                color: "var(--text-dim)",
+              }}
             >
               Your scenes will appear here
             </p>
@@ -81,10 +98,19 @@ export function ScenePlayer() {
   }
 
   return (
-    <div className="relative w-full h-full flex flex-col" style={{ background: "var(--bg)" }}>
+    <div
+      className="relative w-full h-full flex flex-col"
+      style={{ background: "var(--bg)" }}
+    >
       {/* Cinematic bars */}
-      <div className="absolute top-0 left-0 right-0 h-8 z-10" style={{ background: "linear-gradient(to bottom, black, transparent)" }} />
-      <div className="absolute bottom-0 left-0 right-0 h-24 z-10" style={{ background: "linear-gradient(to top, black, transparent)" }} />
+      <div
+        className="absolute top-0 left-0 right-0 h-8 z-10"
+        style={{ background: "linear-gradient(to bottom, black, transparent)" }}
+      />
+      <div
+        className="absolute bottom-0 left-0 right-0 h-24 z-10"
+        style={{ background: "linear-gradient(to top, black, transparent)" }}
+      />
 
       {/* Media area */}
       <div className="flex-1 relative overflow-hidden">
@@ -113,7 +139,11 @@ export function ScenePlayer() {
                   className="w-full h-full object-contain"
                 />
                 {current.audioUrl && (
-                  <audio ref={audioRef} src={current.audioUrl} onEnded={advanceScene} />
+                  <audio
+                    ref={audioRef}
+                    src={current.audioUrl}
+                    onEnded={advanceScene}
+                  />
                 )}
               </>
             ) : null}
@@ -145,12 +175,18 @@ export function ScenePlayer() {
       {/* Controls bar */}
       <div
         className="relative z-20 flex items-center justify-between px-6 py-3"
-        style={{ background: "rgba(0, 0, 0, 0.5)", backdropFilter: "blur(12px)" }}
+        style={{
+          background: "rgba(0, 0, 0, 0.5)",
+          backdropFilter: "blur(12px)",
+        }}
       >
         <button
           onClick={() => setPlaying(false)}
           className="text-xs tracking-wider uppercase font-medium px-3 py-1.5 rounded-full transition-colors hover:opacity-80"
-          style={{ color: "var(--text-dim)", border: "1px solid var(--border)" }}
+          style={{
+            color: "var(--text-dim)",
+            border: "1px solid var(--border)",
+          }}
         >
           Close
         </button>
@@ -163,15 +199,20 @@ export function ScenePlayer() {
               onClick={() => setCurrentIndex(i)}
               className="w-2 h-2 rounded-full transition-all"
               style={{
-                background: i === currentIndex ? "var(--accent)" : "var(--text-faint)",
-                boxShadow: i === currentIndex ? "0 0 8px var(--accent-glow)" : "none",
+                background:
+                  i === currentIndex ? "var(--accent)" : "var(--text-faint)",
+                boxShadow:
+                  i === currentIndex ? "0 0 8px var(--accent-glow)" : "none",
                 transform: i === currentIndex ? "scale(1.3)" : "scale(1)",
               }}
             />
           ))}
         </div>
 
-        <span className="text-xs tabular-nums" style={{ color: "var(--text-dim)", fontFamily: "var(--font-mono)" }}>
+        <span
+          className="text-xs tabular-nums"
+          style={{ color: "var(--text-dim)", fontFamily: "var(--font-mono)" }}
+        >
           {currentIndex + 1} / {completedScenes.length}
         </span>
       </div>
