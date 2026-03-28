@@ -9,8 +9,7 @@ import { useProjectsStore } from "@/stores/projects-store";
 import type { Scene, Message } from "@/lib/types";
 import type { ProjectStore } from "@/stores/project-store";
 
-let sceneCounter = 0;
-const nextSceneId = () => `scene-${++sceneCounter}`;
+const nextSceneId = () => `scene-${crypto.randomUUID()}`;
 
 let msgIdCounter = 0;
 
@@ -230,7 +229,6 @@ function handleToolResult(
 
   if (name === "generate_script" && result?.scenes) {
     const existing = store.getState().scenes;
-    sceneCounter = Math.max(sceneCounter, existing.length);
     const raw = result.scenes as Array<Record<string, string>>;
     const startIndex = existing.length;
     const newScenes: Scene[] = raw.map((s, i) => ({
