@@ -24,9 +24,11 @@ const STATUS_COLORS: Record<Scene["status"], string> = {
 export function SceneCard({
   scene,
   onPlay,
+  onEdit,
 }: {
   readonly scene: Scene;
   readonly onPlay?: () => void;
+  readonly onEdit?: () => void;
 }) {
   const isGenerating = scene.status === "imaging" || scene.status === "filming";
   const hasMedia = scene.videoUrl || scene.imageUrl;
@@ -36,24 +38,33 @@ export function SceneCard({
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, ease: "easeOut" }}
-      className="relative rounded-lg overflow-hidden group"
+      onClick={onEdit}
+      className="relative rounded-lg overflow-hidden group cursor-pointer"
       style={{
         background: "var(--surface)",
         border: "1px solid var(--border)",
       }}
     >
       {/* Film strip sprocket holes */}
-      <div className="absolute left-0 top-0 bottom-0 w-5 flex flex-col justify-around items-center py-3 z-10"
+      <div
+        className="absolute left-0 top-0 bottom-0 w-5 flex flex-col justify-around items-center py-3 z-10"
         style={{ background: "var(--film-border)" }}
       >
         {[...Array(4)].map((_, i) => (
-          <div key={i} className="w-2 h-3 rounded-sm" style={{ background: "var(--film-hole)" }} />
+          <div
+            key={i}
+            className="w-2 h-3 rounded-sm"
+            style={{ background: "var(--film-hole)" }}
+          />
         ))}
       </div>
 
       <div className="ml-5">
         {/* Media preview area */}
-        <div className="relative aspect-video overflow-hidden" style={{ background: "var(--bg-warm)" }}>
+        <div
+          className="relative aspect-video overflow-hidden"
+          style={{ background: "var(--bg-warm)" }}
+        >
           {scene.imageUrl ? (
             <img
               src={scene.imageUrl}
@@ -65,7 +76,13 @@ export function SceneCard({
               {isGenerating ? (
                 <div className="animate-shimmer w-full h-full" />
               ) : (
-                <span style={{ color: "var(--text-faint)", fontFamily: "var(--font-display)", fontSize: "1.2rem" }}>
+                <span
+                  style={{
+                    color: "var(--text-faint)",
+                    fontFamily: "var(--font-display)",
+                    fontSize: "1.2rem",
+                  }}
+                >
                   {scene.index + 1}
                 </span>
               )}
@@ -76,11 +93,22 @@ export function SceneCard({
           {scene.videoUrl && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity">
               <button
-                onClick={onPlay}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onPlay?.();
+                }}
                 className="w-12 h-12 rounded-full flex items-center justify-center transition-transform hover:scale-110"
-                style={{ background: "var(--accent)", boxShadow: "0 0 20px var(--accent-glow)" }}
+                style={{
+                  background: "var(--accent)",
+                  boxShadow: "0 0 20px var(--accent-glow)",
+                }}
               >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="var(--text)">
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="var(--text)"
+                >
                   <polygon points="5,3 19,12 5,21" />
                 </svg>
               </button>
@@ -89,7 +117,10 @@ export function SceneCard({
 
           {/* Progress bar for filming */}
           {scene.status === "filming" && (
-            <div className="absolute bottom-0 left-0 right-0 h-1" style={{ background: "var(--surface-3)" }}>
+            <div
+              className="absolute bottom-0 left-0 right-0 h-1"
+              style={{ background: "var(--surface-3)" }}
+            >
               <motion.div
                 className="h-full"
                 style={{ background: "var(--accent)" }}
@@ -124,7 +155,10 @@ export function SceneCard({
             </span>
             <h3
               className="text-sm font-medium truncate"
-              style={{ color: "var(--text)", fontFamily: "var(--font-display)" }}
+              style={{
+                color: "var(--text)",
+                fontFamily: "var(--font-display)",
+              }}
             >
               {scene.title || "Untitled Scene"}
             </h3>
@@ -141,7 +175,11 @@ export function SceneCard({
 
           {/* Audio fallback player */}
           {scene.audioUrl && !scene.videoUrl && (
-            <audio controls src={scene.audioUrl} className="w-full h-7 mt-1 opacity-70" />
+            <audio
+              controls
+              src={scene.audioUrl}
+              className="w-full h-7 mt-1 opacity-70"
+            />
           )}
         </div>
       </div>

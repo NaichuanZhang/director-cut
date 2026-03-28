@@ -22,6 +22,7 @@ export async function generateVideo(
   visualDescription: string,
   dialogueDirections: string,
   onProgress?: (sceneId: string, pct: number) => void,
+  keyframeBase64?: string,
 ): Promise<{ sceneId: string; videoUrl: string }> {
   const fullPrompt = `${visualDescription}. Audio directions: ${dialogueDirections}`;
   const outputKey = `${VIDEO_OUTPUT_S3_PREFIX}${sceneId}-${Date.now()}`;
@@ -29,15 +30,27 @@ export async function generateVideo(
   log.info("generate_video", `Starting video generation for ${sceneId}`, {
     model: MODELS.VIDEO,
     promptLength: fullPrompt.length,
+    hasKeyframe: !!keyframeBase64,
     s3Bucket: VIDEO_OUTPUT_S3_BUCKET,
     s3Key: outputKey,
   });
 
+  const modelInput = keyframeBase64
+    ? {
+        prompt: fullPrompt,
+        keyframes: {
+          frame0: {
+            type: "image",
+            source: { type: "base64", data: keyframeBase64 },
+          },
+        },
+      }
+    : { prompt: fullPrompt };
+
   const startCommand = new StartAsyncInvokeCommand({
     modelId: MODELS.VIDEO,
-    modelInput: {
-      prompt: fullPrompt,
-    },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    modelInput: modelInput as any,
     outputDataConfig: {
       s3OutputDataConfig: {
         s3Uri: `s3://${VIDEO_OUTPUT_S3_BUCKET}/${outputKey}`,

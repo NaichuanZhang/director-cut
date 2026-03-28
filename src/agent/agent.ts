@@ -10,7 +10,7 @@ import {
 import { bedrockRuntime } from "@/lib/bedrock";
 import { MODELS, MAX_TOOL_ROUNDS } from "@/lib/constants";
 import { SYSTEM_PROMPT } from "./system-prompt";
-import { toolConfig, executeTool } from "./tools";
+import { toolConfig, executeTool, clearImageCache } from "./tools";
 import { log } from "@/lib/logger";
 import type { SSEEvent } from "@/lib/types";
 
@@ -63,6 +63,8 @@ export async function* streamAgent(
   history: readonly Message[],
 ): AsyncGenerator<SSEEvent> {
   const messages: Message[] = [...history];
+
+  clearImageCache();
 
   // Add user input — text only (audio transcribed client-side)
   messages.push({

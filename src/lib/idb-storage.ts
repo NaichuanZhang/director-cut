@@ -2,7 +2,7 @@ import type { StateStorage } from "zustand/middleware";
 
 const DB_NAME = "saycut";
 const STORE_NAME = "state";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 function isServer() {
   return typeof indexedDB === "undefined";

@@ -4,6 +4,13 @@ import { generateImage } from "./generate-image";
 import { generateVideo } from "./generate-video";
 import { generateSpeech } from "./generate-speech";
 
+/** Server-side cache of generated keyframe images (sceneId → base64 PNG). */
+const imageCache = new Map<string, string>();
+
+export function clearImageCache(): void {
+  imageCache.clear();
+}
+
 export const toolConfig: ToolConfiguration = {
   tools: [
     {
@@ -119,17 +126,29 @@ export async function executeTool(
         args.description as string,
         (args.num_scenes as number) ?? 3,
       );
-    case "generate_image":
-      return generateImage(
+    case "generate_image": {
+      const result = await generateImage(
         args.scene_id as string,
         args.visual_description as string,
       );
+      // Cache the base64 image for later video generation
+      const imageResult = result as { sceneId: string; imageUrl: string };
+      const prefix = "data:image/png;base64,";
+      if (imageResult.imageUrl.startsWith(prefix)) {
+        imageCache.set(
+          imageResult.sceneId,
+          imageResult.imageUrl.slice(prefix.length),
+        );
+      }
+      return result;
+    }
     case "generate_video":
       return generateVideo(
         args.scene_id as string,
         args.visual_description as string,
         args.dialogue_directions as string,
         onProgress,
+        imageCache.get(args.scene_id as string),
       );
     case "generate_speech":
       return generateSpeech(args.scene_id as string, args.text as string);

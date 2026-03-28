@@ -1,21 +1,67 @@
 "use client";
 
+import { useState, useCallback } from "react";
 import Link from "next/link";
 import { useProjectStore } from "@/stores/project-store-provider";
+import { useAgent } from "@/hooks/use-agent";
 import { AgentPanel } from "./agent-panel";
 import { SceneCard } from "./scene-card";
 import { ScenePlayer } from "./scene-player";
+import { SceneEditModal } from "./scene-edit-modal";
+import type { Scene } from "@/lib/types";
 
 export function AppShell() {
   const scenes = useProjectStore((s) => s.scenes);
   const isPlaying = useProjectStore((s) => s.isPlaying);
+  const isStreaming = useProjectStore((s) => s.isStreaming);
+  const updateScene = useProjectStore((s) => s.updateScene);
   const setPlaying = useProjectStore((s) => s.setPlaying);
   const setCurrentIndex = useProjectStore((s) => s.setCurrentSceneIndex);
+  const { sendMessage } = useAgent();
+
+  const [editingSceneId, setEditingSceneId] = useState<string | null>(null);
+  const editingScene = scenes.find((s) => s.id === editingSceneId) ?? null;
 
   const handlePlayScene = (index: number) => {
     setCurrentIndex(index);
     setPlaying(true);
   };
+
+  const handleRegenerate = useCallback(
+    (sceneId: string, what: "image" | "video" | "speech") => {
+      const scene = scenes.find((s) => s.id === sceneId);
+      if (!scene) return;
+
+      const sceneNum = scene.index + 1;
+
+      if (what === "image") {
+        updateScene(sceneId, { imageUrl: null, status: "scripted" });
+        sendMessage({
+          type: "text",
+          data: `Regenerate the image for scene ${sceneNum}. Use this visual description: ${scene.visualDescription}`,
+        });
+      } else if (what === "video") {
+        updateScene(sceneId, {
+          videoUrl: null,
+          videoPct: 0,
+          status: "imaging",
+        });
+        sendMessage({
+          type: "text",
+          data: `Regenerate the video for scene ${sceneNum}. Visual: ${scene.visualDescription}. Audio directions: ${scene.dialogueDirections}`,
+        });
+      } else if (what === "speech") {
+        updateScene(sceneId, { audioUrl: null });
+        sendMessage({
+          type: "text",
+          data: `Regenerate the narration audio for scene ${sceneNum}. Text: ${scene.narrationText}`,
+        });
+      }
+
+      setEditingSceneId(null);
+    },
+    [scenes, updateScene, sendMessage],
+  );
 
   return (
     <div
@@ -94,7 +140,7 @@ export function AppShell() {
 
             {/* Sponsor badges */}
             <div className="flex items-center gap-2">
-              {["Gemini", "Imagen", "Veo 3.1"].map((name) => (
+              {["Claude", "SD 3.5", "Luma Ray"].map((name) => (
                 <span
                   key={name}
                   className="text-[9px] tracking-wider uppercase px-1.5 py-0.5 rounded"
@@ -172,6 +218,7 @@ export function AppShell() {
                       key={scene.id}
                       scene={scene}
                       onPlay={() => handlePlayScene(i)}
+                      onEdit={() => setEditingSceneId(scene.id)}
                     />
                   ))}
                 </div>
@@ -191,7 +238,7 @@ export function AppShell() {
           >
             Built with
           </span>
-          {["Google DeepMind", "Gemini 3 Flash", "Imagen 3", "Veo 3.1"].map(
+          {["Amazon Bedrock", "Claude Sonnet", "SD 3.5", "Luma Ray"].map(
             (s) => (
               <span
                 key={s}
@@ -204,6 +251,16 @@ export function AppShell() {
           )}
         </footer>
       </div>
+
+      {/* Scene edit modal */}
+      {editingScene && (
+        <SceneEditModal
+          scene={editingScene}
+          isStreaming={isStreaming}
+          onClose={() => setEditingSceneId(null)}
+          onRegenerate={handleRegenerate}
+        />
+      )}
     </div>
   );
 }
