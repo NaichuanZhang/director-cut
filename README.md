@@ -1,8 +1,8 @@
 # SayCut
 
-Voice-first AI movie director. Speak a story idea and watch it become a cinematic short film with generated visuals, video, and audio.
+Voice-first AI movie director. Speak a story idea and watch it become a cinematic short film with generated visuals, narration, and video.
 
-Built with Next.js, Google GenAI (Gemini, Imagen, Veo), Zustand, and Framer Motion for the Google DeepMind multi-model hackathon.
+Built with Next.js, AWS Bedrock (Claude, Stable Diffusion, Luma Ray), ElevenLabs TTS, Zustand, and Framer Motion for the Google DeepMind multi-model hackathon.
 
 ## Data Flow
 
@@ -16,19 +16,19 @@ flowchart TD
 
     subgraph Server
         D --> E["Agent Loop
-        Gemini 3 Flash"]
+        Claude Sonnet 4.6"]
         E -->|tool call| F["generate_script
-        Gemini 3 Flash"]
+        Claude Sonnet 4.6"]
         F -->|script JSON| E
         E -->|tool call per scene| G["generate_image
-        Imagen 4.0"]
+        SD 3.5 Large"]
+        E -->|tool call per scene| H["generate_speech
+        ElevenLabs TTS"]
         G -->|base64 PNG| E
-        E -->|tool call per scene| H["generate_video
-        Veo 3.1"]
-        H -->|video URI| E
-        H -.->|on failure| I["generate_speech
-        Gemini 2.5 Flash TTS"]
-        I -.->|base64 WAV| E
+        H -->|base64 audio| E
+        E -->|tool call per scene| I["generate_video
+        Luma Ray v2"]
+        I -->|video via S3| E
     end
 
     subgraph "Client Response"
@@ -44,23 +44,24 @@ flowchart TD
 
 | Tool | Model | Input | Output |
 |------|-------|-------|--------|
-| `generate_script` | Gemini 3 Flash | Story description, scene count | Structured script with scenes (title, narration, visual description, dialogue directions) |
-| `generate_image` | Imagen 4.0 | Scene ID, visual description | Keyframe image (base64 PNG) |
-| `generate_video` | Veo 3.1 | Scene ID, visual + audio directions | 6s cinematic video clip with native audio (720p, 16:9) |
-| `generate_speech` | Gemini 2.5 Flash TTS | Scene ID, narration text | Narration audio (base64 WAV) — fallback when video generation fails |
+| `generate_script` | Claude Sonnet 4.6 (Bedrock Converse) | Story description, scene count | Structured script with scenes (title, narration, visual description, dialogue directions) |
+| `generate_image` | Stable Diffusion 3.5 Large (Bedrock InvokeModel) | Scene ID, visual description | Keyframe image (base64 PNG) |
+| `generate_speech` | ElevenLabs Multilingual v2 (DigitalOcean Model Access) | Scene ID, narration text | Narration audio (base64 MP3) |
+| `generate_video` | Luma Ray v2 (Bedrock async invoke) | Scene ID, visual + audio directions | 6s cinematic video clip (720p, 16:9) via S3 |
 
 ### Pipeline Sequence
 
-1. **Script** — Agent calls `generate_script` once to produce a structured multi-scene screenplay
-2. **Image** — Agent calls `generate_image` for each scene to create a keyframe
-3. **Video** — Agent calls `generate_video` for each scene (polls up to 120s); falls back to `generate_speech` on failure
-4. **Playback** — Client auto-plays scenes sequentially in a full-screen player
+1. **Script** -- Agent calls `generate_script` once to produce a structured multi-scene screenplay
+2. **Image + Speech** -- Agent calls `generate_image` and `generate_speech` in parallel for each scene
+3. **Video** -- Agent calls `generate_video` for each scene (polls up to 5 min, downloads from S3)
+4. **Playback** -- Client auto-plays scenes sequentially in a full-screen cinematic player
 
 ### Resilience
 
-- **Retry with backoff** — Gemini API calls (429 rate-limit, 503 overload) retry up to 3 times with exponential backoff (2s, 4s, 8s)
-- **Base64 stripping** — Tool results fed back to the LLM have base64 data URIs truncated to avoid exceeding the 1M token context limit
-- **Structured logging** — All tool calls and API interactions are logged with timestamps, scopes, durations, and error context (`[saycut]` prefix in server console)
+- **Retry with backoff** -- Bedrock API calls (ThrottlingException, ServiceUnavailableException, ModelTimeoutException) retry up to 3 times with exponential backoff (2s, 4s, 8s)
+- **Parallel tool execution** -- Tools run concurrently via `Promise.allSettled()`; one failure doesn't block others
+- **Base64 stripping** -- Tool results fed back to the LLM have base64 data URIs truncated to avoid context bloat
+- **Structured logging** -- All tool calls and API interactions are logged with timestamps, scopes, and durations (`[saycut]` prefix)
 
 ### Persistence
 
@@ -72,8 +73,15 @@ Scenes and messages are persisted to **IndexedDB** via Zustand's `persist` middl
 # Install dependencies
 npm install
 
-# Set your Google API key
-echo 'GOOGLE_API_KEY=your-key-here' > .env.local
+# Configure AWS credentials (uses the "tokenmaster" profile)
+# Ensure ~/.aws/credentials has a [tokenmaster] profile with Bedrock access
+
+# Set environment variables
+cat > .env.local << 'EOF'
+AWS_REGION=us-west-2
+SAYCUT_VIDEO_S3_BUCKET=saycut-video-output
+DIGITAL_OCEAN_MODEL_ACCESS_KEY=your-key-here
+EOF
 
 # Start dev server
 npm run dev
@@ -86,7 +94,7 @@ Open [http://localhost:3000](http://localhost:3000), click the voice orb or type
 ```
 src/
 ├── agent/
-│   ├── agent.ts              # Agentic loop (Gemini function calling, max 6 rounds)
+│   ├── agent.ts              # Agentic loop (Bedrock Converse, max 6 rounds)
 │   ├── system-prompt.ts      # Agent behavior instructions
 │   └── tools/                # Tool implementations + declarations
 ├── app/
@@ -95,5 +103,5 @@ src/
 ├── components/               # AppShell, VoiceOrb, SceneCard, ScenePlayer, AgentPanel
 ├── hooks/                    # useAgent (SSE consumer), useAudioRecorder
 ├── stores/                   # Zustand project store (scenes, messages, playback)
-└── lib/                      # GenAI client, constants, types, logger, IDB storage
+└── lib/                      # Bedrock client, S3 client, constants, types, logger, IDB storage
 ```
