@@ -31,7 +31,8 @@ export function ScenePlayer() {
 
     if (current.videoUrl && videoRef.current) {
       videoRef.current.play().catch(() => {});
-    } else if (current.audioUrl && audioRef.current) {
+    }
+    if (current.audioUrl && audioRef.current) {
       audioRef.current.play().catch(() => {});
     }
   }, [isPlaying, current, currentIndex]);
@@ -124,13 +125,24 @@ export function ScenePlayer() {
             className="absolute inset-0"
           >
             {current.videoUrl ? (
-              <video
-                ref={videoRef}
-                src={current.videoUrl}
-                onEnded={advanceScene}
-                className="w-full h-full object-contain"
-                playsInline
-              />
+              <>
+                <video
+                  ref={videoRef}
+                  src={current.videoUrl}
+                  onEnded={current.audioUrl ? undefined : advanceScene}
+                  loop={!!current.audioUrl}
+                  className="w-full h-full object-contain"
+                  playsInline
+                  muted
+                />
+                {current.audioUrl && (
+                  <audio
+                    ref={audioRef}
+                    src={current.audioUrl}
+                    onEnded={advanceScene}
+                  />
+                )}
+              </>
             ) : current.imageUrl ? (
               <>
                 <img

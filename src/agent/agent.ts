@@ -121,8 +121,11 @@ export async function* streamAgent(
 
     // Extract tool use blocks
     const toolUseBlocks = assistantMessage.content.filter(
-      (b): b is ContentBlock & { toolUse: NonNullable<ContentBlock["toolUse"]> } =>
-        !!b.toolUse,
+      (
+        b,
+      ): b is ContentBlock & {
+        toolUse: NonNullable<ContentBlock["toolUse"]>;
+      } => !!b.toolUse,
     );
 
     if (toolUseBlocks.length === 0) {
@@ -130,77 +133,83 @@ export async function* streamAgent(
       break;
     }
 
-    log.info("agent", `Round ${round + 1} — ${toolUseBlocks.length} tool call(s)`, {
-      tools: toolUseBlocks.map((b) => b.toolUse.name),
-    });
+    log.info(
+      "agent",
+      `Round ${round + 1} — ${toolUseBlocks.length} tool call(s)`,
+      {
+        tools: toolUseBlocks.map((b) => b.toolUse.name),
+      },
+    );
 
-    // Execute each tool call, collect tool results
-    const toolResultContent: ContentBlock[] = [];
-
-    for (const block of toolUseBlocks) {
+    // Emit all tool_start events, then execute tools in parallel
+    const toolCalls = toolUseBlocks.map((block) => {
       const { toolUseId, name, input: toolInput } = block.toolUse;
       const args = (toolInput ?? {}) as Record<string, unknown>;
       const sceneId = args.scene_id as string | undefined;
+      return { toolUseId, name: name ?? "", args, sceneId };
+    });
 
+    for (const call of toolCalls) {
       yield {
         type: "tool_start",
-        name,
-        args,
-        sceneId,
+        name: call.name,
+        args: call.args,
+        sceneId: call.sceneId,
       };
+    }
 
-      const startMs = Date.now();
-
-      try {
-        log.debug("agent", `Executing tool: ${name}`, { sceneId, args });
-
-        const result = await executeTool(
-          name ?? "",
-          args,
-          (sid: string, pct: number) => {
-            // Note: can't yield from a callback in a generator
-          },
-        );
-
-        const durationMs = Date.now() - startMs;
-        log.info("agent", `Tool ${name} completed in ${durationMs}ms`, {
-          sceneId,
+    // Run all tools concurrently
+    const settled = await Promise.allSettled(
+      toolCalls.map(async (call) => {
+        const startMs = Date.now();
+        log.debug("agent", `Executing tool: ${call.name}`, {
+          sceneId: call.sceneId,
+          args: call.args,
         });
+        const result = await executeTool(call.name, call.args, () => {});
+        const durationMs = Date.now() - startMs;
+        log.info("agent", `Tool ${call.name} completed in ${durationMs}ms`, {
+          sceneId: call.sceneId,
+        });
+        return result;
+      }),
+    );
 
+    // Collect results and emit tool_done events
+    const toolResultContent: ContentBlock[] = [];
+
+    for (let i = 0; i < toolCalls.length; i++) {
+      const call = toolCalls[i];
+      const outcome = settled[i];
+
+      if (outcome.status === "fulfilled") {
         yield {
           type: "tool_done",
-          name,
-          result,
-          sceneId,
+          name: call.name,
+          result: outcome.value,
+          sceneId: call.sceneId,
         };
-
         toolResultContent.push({
           toolResult: {
-            toolUseId,
-            content: [{ text: JSON.stringify(summarizeForLLM(result)) }],
+            toolUseId: call.toolUseId,
+            content: [{ text: JSON.stringify(summarizeForLLM(outcome.value)) }],
           },
         });
-      } catch (error) {
-        const durationMs = Date.now() - startMs;
+      } else {
         const message =
-          error instanceof Error ? error.message : "Unknown error";
-
-        log.error(
-          "agent",
-          `Tool ${name} FAILED after ${durationMs}ms`,
-          error,
-        );
-
+          outcome.reason instanceof Error
+            ? outcome.reason.message
+            : "Unknown error";
+        log.error("agent", `Tool ${call.name} FAILED`, outcome.reason);
         yield {
           type: "tool_done",
-          name,
+          name: call.name,
           result: { error: message },
-          sceneId,
+          sceneId: call.sceneId,
         };
-
         toolResultContent.push({
           toolResult: {
-            toolUseId,
+            toolUseId: call.toolUseId,
             content: [{ text: JSON.stringify({ error: message }) }],
             status: "error",
           },

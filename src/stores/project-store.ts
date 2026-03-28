@@ -20,6 +20,7 @@ export interface ProjectState {
   setScenes: (scenes: readonly Scene[]) => void;
   updateScene: (id: string, patch: Partial<Scene>) => void;
   addMessage: (msg: Message) => void;
+  updateMessage: (id: string, patch: Partial<Message>) => void;
   appendStreamingText: (text: string) => void;
   flushStreamingText: () => void;
   setStreaming: (v: boolean) => void;
@@ -58,6 +59,13 @@ function createProjectStore(projectId: string) {
           }),
 
         addMessage: (msg) => set({ messages: [...get().messages, msg] }),
+
+        updateMessage: (id, patch) =>
+          set({
+            messages: get().messages.map((m) =>
+              m.id === id ? { ...m, ...patch } : m,
+            ),
+          }),
 
         appendStreamingText: (text) =>
           set({ streamingText: get().streamingText + text }),

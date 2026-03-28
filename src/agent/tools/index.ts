@@ -2,6 +2,7 @@ import type { ToolConfiguration } from "@aws-sdk/client-bedrock-runtime";
 import { generateScript } from "./generate-script";
 import { generateImage } from "./generate-image";
 import { generateVideo } from "./generate-video";
+import { generateSpeech } from "./generate-speech";
 
 export const toolConfig: ToolConfiguration = {
   tools: [
@@ -76,11 +77,30 @@ export const toolConfig: ToolConfiguration = {
                   "Detailed audio directions: character dialogue with tone/emotion, sound effects, ambient sounds. Example: 'Character whispers \"hello\" softly. Wind howling. Distant thunder.'",
               },
             },
-            required: [
-              "scene_id",
-              "visual_description",
-              "dialogue_directions",
-            ],
+            required: ["scene_id", "visual_description", "dialogue_directions"],
+          },
+        },
+      },
+    },
+    {
+      toolSpec: {
+        name: "generate_speech",
+        description:
+          "Generate narration audio for a scene. Call alongside generate_image in the same round, once per scene.",
+        inputSchema: {
+          json: {
+            type: "object",
+            properties: {
+              scene_id: {
+                type: "string",
+                description: "The scene ID",
+              },
+              text: {
+                type: "string",
+                description: "The narration text to speak",
+              },
+            },
+            required: ["scene_id", "text"],
           },
         },
       },
@@ -111,6 +131,8 @@ export async function executeTool(
         args.dialogue_directions as string,
         onProgress,
       );
+    case "generate_speech":
+      return generateSpeech(args.scene_id as string, args.text as string);
     default:
       throw new Error(`Unknown tool: ${name}`);
   }
