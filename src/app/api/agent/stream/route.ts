@@ -12,6 +12,7 @@ export async function POST(req: NextRequest) {
     role: "user" | "assistant";
     content: Array<{ text: string }>;
   }>;
+  const skipVideo = body.skipVideo === true;
 
   if (!input?.type || !input?.data) {
     log.warn("route", "Bad request — missing input.type or input.data", {
@@ -50,7 +51,9 @@ export async function POST(req: NextRequest) {
           controller.enqueue(encoder.encode(transcriptionEvent));
         }
 
-        for await (const event of streamAgent(agentInput, history)) {
+        for await (const event of streamAgent(agentInput, history, {
+          skipVideo,
+        })) {
           const data = `data: ${JSON.stringify(event)}\n\n`;
           controller.enqueue(encoder.encode(data));
         }

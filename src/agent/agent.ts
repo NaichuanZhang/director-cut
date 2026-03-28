@@ -61,6 +61,7 @@ function summarizeForLLM(result: unknown): unknown {
 export async function* streamAgent(
   input: { type: "audio" | "text"; data: string },
   history: readonly Message[],
+  options?: { skipVideo?: boolean },
 ): AsyncGenerator<SSEEvent> {
   const messages: Message[] = [...history];
 
@@ -77,6 +78,11 @@ export async function* streamAgent(
     `Starting agent loop — input.type=${input.type}, historyLength=${history.length}`,
   );
 
+  const systemPrompt = options?.skipVideo
+    ? SYSTEM_PROMPT +
+      "\n\nIMPORTANT: Do NOT call generate_video. Skip video generation entirely. Only generate scripts, images, and speech."
+    : SYSTEM_PROMPT;
+
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     log.debug(
       "agent",
@@ -90,7 +96,7 @@ export async function* streamAgent(
     const command = new ConverseCommand({
       modelId: MODELS.AGENT,
       messages,
-      system: [{ text: SYSTEM_PROMPT }],
+      system: [{ text: systemPrompt }],
       toolConfig,
     });
 

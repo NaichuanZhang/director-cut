@@ -14,6 +14,8 @@ export function AppShell() {
   const scenes = useProjectStore((s) => s.scenes);
   const isPlaying = useProjectStore((s) => s.isPlaying);
   const isStreaming = useProjectStore((s) => s.isStreaming);
+  const skipVideo = useProjectStore((s) => s.skipVideo);
+  const setSkipVideo = useProjectStore((s) => s.setSkipVideo);
   const updateScene = useProjectStore((s) => s.updateScene);
   const setPlaying = useProjectStore((s) => s.setPlaying);
   const setCurrentIndex = useProjectStore((s) => s.setCurrentSceneIndex);
@@ -116,6 +118,35 @@ export function AppShell() {
           </div>
 
           <div className="flex items-center gap-4">
+            {/* Skip video toggle */}
+            <button
+              onClick={() => setSkipVideo(!skipVideo)}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-full text-[10px] tracking-wider uppercase font-medium transition-all"
+              style={{
+                background: skipVideo ? "var(--warning)" : "var(--surface-2)",
+                color: skipVideo ? "var(--bg)" : "var(--text-dim)",
+                border: `1px solid ${skipVideo ? "var(--warning)" : "var(--border)"}`,
+              }}
+            >
+              <div
+                className="w-6 h-3 rounded-full relative transition-colors"
+                style={{
+                  background: skipVideo
+                    ? "rgba(0,0,0,0.3)"
+                    : "var(--surface-3)",
+                }}
+              >
+                <div
+                  className="absolute top-0.5 w-2 h-2 rounded-full transition-all"
+                  style={{
+                    background: skipVideo ? "var(--bg)" : "var(--text-faint)",
+                    left: skipVideo ? "14px" : "2px",
+                  }}
+                />
+              </div>
+              {skipVideo ? "Video OFF" : "Video ON"}
+            </button>
+
             {scenes.some((s) => s.status === "complete") && !isPlaying && (
               <button
                 onClick={() => handlePlayScene(0)}

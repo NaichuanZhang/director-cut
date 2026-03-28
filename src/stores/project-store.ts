@@ -14,6 +14,7 @@ export interface ProjectState {
   readonly isStreaming: boolean;
   readonly isRecording: boolean;
   readonly isPlaying: boolean;
+  readonly skipVideo: boolean;
   readonly currentSceneIndex: number;
   readonly streamingText: string;
 
@@ -26,6 +27,7 @@ export interface ProjectState {
   setStreaming: (v: boolean) => void;
   setRecording: (v: boolean) => void;
   setPlaying: (v: boolean) => void;
+  setSkipVideo: (v: boolean) => void;
   setCurrentSceneIndex: (i: number) => void;
   reset: () => void;
 }
@@ -46,6 +48,7 @@ function createProjectStore(projectId: string) {
         isStreaming: false,
         isRecording: false,
         isPlaying: false,
+        skipVideo: false,
         currentSceneIndex: 0,
         streamingText: "",
 
@@ -90,6 +93,7 @@ function createProjectStore(projectId: string) {
         setStreaming: (isStreaming) => set({ isStreaming }),
         setRecording: (isRecording) => set({ isRecording }),
         setPlaying: (isPlaying) => set({ isPlaying }),
+        setSkipVideo: (skipVideo) => set({ skipVideo }),
         setCurrentSceneIndex: (currentSceneIndex) => set({ currentSceneIndex }),
 
         reset: () =>
@@ -99,6 +103,7 @@ function createProjectStore(projectId: string) {
             isStreaming: false,
             isRecording: false,
             isPlaying: false,
+            skipVideo: false,
             currentSceneIndex: 0,
             streamingText: "",
           }),

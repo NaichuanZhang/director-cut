@@ -95,11 +95,12 @@ export function useAgent() {
       });
 
       try {
-        const history = buildHistory(store.getState().messages);
+        const { messages: msgs, skipVideo } = store.getState();
+        const history = buildHistory(msgs);
         const res = await fetch("/api/agent/stream", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ input, history }),
+          body: JSON.stringify({ input, history, skipVideo }),
         });
 
         if (!res.ok || !res.body) throw new Error("Stream failed");
