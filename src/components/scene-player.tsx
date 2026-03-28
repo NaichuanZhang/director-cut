@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useCallback, useEffect } from "react";
+import { useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useProjectStore } from "@/stores/project-store-provider";
 
@@ -10,9 +10,6 @@ export function ScenePlayer() {
   const currentIndex = useProjectStore((s) => s.currentSceneIndex);
   const setPlaying = useProjectStore((s) => s.setPlaying);
   const setCurrentIndex = useProjectStore((s) => s.setCurrentSceneIndex);
-
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const audioRef = useRef<HTMLAudioElement>(null);
 
   const completedScenes = scenes.filter((s) => s.status === "complete");
   const current = completedScenes[currentIndex];
@@ -26,16 +23,23 @@ export function ScenePlayer() {
     }
   }, [currentIndex, completedScenes.length, setCurrentIndex, setPlaying]);
 
-  useEffect(() => {
-    if (!isPlaying || !current) return;
+  const videoRefCallback = useCallback(
+    (el: HTMLVideoElement | null) => {
+      if (el && isPlaying) {
+        el.play().catch(() => {});
+      }
+    },
+    [isPlaying],
+  );
 
-    if (current.videoUrl && videoRef.current) {
-      videoRef.current.play().catch(() => {});
-    }
-    if (current.audioUrl && audioRef.current) {
-      audioRef.current.play().catch(() => {});
-    }
-  }, [isPlaying, current, currentIndex]);
+  const audioRefCallback = useCallback(
+    (el: HTMLAudioElement | null) => {
+      if (el && isPlaying) {
+        el.play().catch(() => {});
+      }
+    },
+    [isPlaying],
+  );
 
   const handlePlay = useCallback(() => {
     if (completedScenes.length === 0) return;
@@ -127,7 +131,7 @@ export function ScenePlayer() {
             {current.videoUrl ? (
               <>
                 <video
-                  ref={videoRef}
+                  ref={videoRefCallback}
                   src={current.videoUrl}
                   onEnded={current.audioUrl ? undefined : advanceScene}
                   loop={!!current.audioUrl}
@@ -137,7 +141,7 @@ export function ScenePlayer() {
                 />
                 {current.audioUrl && (
                   <audio
-                    ref={audioRef}
+                    ref={audioRefCallback}
                     src={current.audioUrl}
                     onEnded={advanceScene}
                   />
@@ -152,7 +156,7 @@ export function ScenePlayer() {
                 />
                 {current.audioUrl && (
                   <audio
-                    ref={audioRef}
+                    ref={audioRefCallback}
                     src={current.audioUrl}
                     onEnded={advanceScene}
                   />
