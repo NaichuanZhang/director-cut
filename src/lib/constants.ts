@@ -1,7 +1,7 @@
 export const MODELS = {
   AGENT: "gemini-3-flash-preview",
   SCRIPT: "gemini-3-flash-preview",
-  IMAGE: "imagen-3.0-generate-002",
+  IMAGE: "imagen-4.0-generate-001",
   VIDEO: "veo-3.1-generate-preview",
   VIDEO_FAST: "veo-3.1-fast-generate-preview",
   TTS: "gemini-2.5-flash-preview-tts",

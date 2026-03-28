@@ -21,7 +21,7 @@ flowchart TD
         Gemini 3 Flash"]
         F -->|script JSON| E
         E -->|tool call per scene| G["generate_image
-        Imagen 3.0"]
+        Imagen 4.0"]
         G -->|base64 PNG| E
         E -->|tool call per scene| H["generate_video
         Veo 3.1"]
@@ -45,7 +45,7 @@ flowchart TD
 | Tool | Model | Input | Output |
 |------|-------|-------|--------|
 | `generate_script` | Gemini 3 Flash | Story description, scene count | Structured script with scenes (title, narration, visual description, dialogue directions) |
-| `generate_image` | Imagen 3.0 | Scene ID, visual description | Keyframe image (base64 PNG) |
+| `generate_image` | Imagen 4.0 | Scene ID, visual description | Keyframe image (base64 PNG) |
 | `generate_video` | Veo 3.1 | Scene ID, visual + audio directions | 6s cinematic video clip with native audio (720p, 16:9) |
 | `generate_speech` | Gemini 2.5 Flash TTS | Scene ID, narration text | Narration audio (base64 WAV) — fallback when video generation fails |
 
@@ -55,6 +55,16 @@ flowchart TD
 2. **Image** — Agent calls `generate_image` for each scene to create a keyframe
 3. **Video** — Agent calls `generate_video` for each scene (polls up to 120s); falls back to `generate_speech` on failure
 4. **Playback** — Client auto-plays scenes sequentially in a full-screen player
+
+### Resilience
+
+- **Retry with backoff** — Gemini API calls (429 rate-limit, 503 overload) retry up to 3 times with exponential backoff (2s, 4s, 8s)
+- **Base64 stripping** — Tool results fed back to the LLM have base64 data URIs truncated to avoid exceeding the 1M token context limit
+- **Structured logging** — All tool calls and API interactions are logged with timestamps, scopes, durations, and error context (`[saycut]` prefix in server console)
+
+### Persistence
+
+Scenes and messages are persisted to **IndexedDB** via Zustand's `persist` middleware. Base64 images and audio survive page refreshes without hitting localStorage's 5MB limit. Transient UI state (streaming, recording, playback) is not persisted.
 
 ## Quick Start
 
@@ -85,5 +95,5 @@ src/
 ├── components/               # AppShell, VoiceOrb, SceneCard, ScenePlayer, AgentPanel
 ├── hooks/                    # useAgent (SSE consumer), useAudioRecorder
 ├── stores/                   # Zustand project store (scenes, messages, playback)
-└── lib/                      # GenAI client, constants, types
+└── lib/                      # GenAI client, constants, types, logger, IDB storage
 ```

@@ -1,10 +1,60 @@
-import type { Content, Part } from "@google/genai";
+import type { Content, GenerateContentResponse, Part } from "@google/genai";
 import { ai } from "@/lib/gemini";
 import { MODELS, MAX_TOOL_ROUNDS } from "@/lib/constants";
 import { SYSTEM_PROMPT } from "./system-prompt";
 import { functionDeclarations, executeTool } from "./tools";
 import { log } from "@/lib/logger";
 import type { SSEEvent } from "@/lib/types";
+
+const RETRY_CODES = new Set([429, 503]);
+const MAX_RETRIES = 3;
+const RETRY_BASE_MS = 2_000;
+
+async function generateContentWithRetry(
+  ...args: Parameters<typeof ai.models.generateContent>
+): Promise<GenerateContentResponse> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await ai.models.generateContent(...args);
+    } catch (error) {
+      const status = parseStatusCode(error);
+      if (
+        status === null ||
+        !RETRY_CODES.has(status) ||
+        attempt >= MAX_RETRIES
+      ) {
+        throw error;
+      }
+      const delayMs = RETRY_BASE_MS * 2 ** attempt;
+      log.warn(
+        "agent",
+        `Gemini ${status} — retrying in ${delayMs}ms (attempt ${attempt + 1}/${MAX_RETRIES})`,
+      );
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+}
+
+function parseStatusCode(error: unknown): number | null {
+  if (!(error instanceof Error)) return null;
+  const match = error.message.match(/"code"\s*:\s*(\d+)/);
+  return match ? Number(match[1]) : null;
+}
+
+/** Strip base64 data URIs from tool results before feeding back to Gemini. */
+function summarizeForLLM(result: unknown): unknown {
+  if (typeof result !== "object" || result === null) return result;
+  const rec = result as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(rec)) {
+    if (typeof v === "string" && v.startsWith("data:")) {
+      out[k] = v.slice(0, v.indexOf(",") + 1) + "…";
+    } else {
+      out[k] = v;
+    }
+  }
+  return out;
+}
 
 export async function* streamAgent(
   input: { type: "audio" | "text"; data: string },
@@ -42,7 +92,7 @@ export async function* streamAgent(
       },
     );
 
-    const response = await ai.models.generateContent({
+    const response = await generateContentWithRetry({
       model: MODELS.AGENT,
       contents,
       config,
@@ -132,7 +182,7 @@ export async function* streamAgent(
         responseParts.push({
           functionResponse: {
             name: call.name,
-            response: { result: JSON.stringify(result) },
+            response: { result: JSON.stringify(summarizeForLLM(result)) },
             id: call.id ?? undefined,
           },
         });
