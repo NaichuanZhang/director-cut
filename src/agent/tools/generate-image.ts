@@ -1,4 +1,5 @@
-import { ai } from "@/lib/gemini";
+import { InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
+import { bedrockRuntime } from "@/lib/bedrock";
 import { MODELS } from "@/lib/constants";
 import { log } from "@/lib/logger";
 
@@ -11,30 +12,32 @@ export async function generateImage(
     promptLength: visualDescription.length,
   });
 
-  const response = await ai.models.generateImages({
-    model: MODELS.IMAGE,
-    prompt: visualDescription,
-    config: {
-      numberOfImages: 1,
-    },
+  const command = new InvokeModelCommand({
+    modelId: MODELS.IMAGE,
+    contentType: "application/json",
+    accept: "application/json",
+    body: JSON.stringify({
+      prompt: visualDescription,
+      mode: "text-to-image",
+      output_format: "png",
+      aspect_ratio: "16:9",
+    }),
   });
 
-  const imageCount = response.generatedImages?.length ?? 0;
-  log.debug("generate_image", `Response received for ${sceneId}`, {
-    imageCount,
-  });
+  const response = await bedrockRuntime.send(command);
+  const body = JSON.parse(
+    new TextDecoder().decode(response.body),
+  ) as { images?: string[] };
 
-  const image = response.generatedImages?.[0];
-  if (!image?.image?.imageBytes) {
-    log.error("generate_image", `No image bytes in response for ${sceneId}`, {
-      imageCount,
-      hasImage: !!image,
-      hasImageObj: !!image?.image,
+  const base64 = body.images?.[0];
+  if (!base64) {
+    log.error("generate_image", `No image data in response for ${sceneId}`, {
+      hasImages: !!body.images,
+      imageCount: body.images?.length ?? 0,
     });
     throw new Error(`Image generation failed for scene ${sceneId}`);
   }
 
-  const base64 = Buffer.from(image.image.imageBytes).toString("base64");
   log.info("generate_image", `Image ready for ${sceneId}`, {
     sizeKB: Math.round((base64.length * 0.75) / 1024),
   });

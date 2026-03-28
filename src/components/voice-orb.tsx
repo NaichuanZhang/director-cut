@@ -14,8 +14,8 @@ export function VoiceOrb() {
 
   const handleToggleRecord = useCallback(async () => {
     if (isRecording) {
-      const audio = await stopRecording();
-      if (audio) sendMessage({ type: "audio", data: audio });
+      const result = await stopRecording();
+      if (result.data) sendMessage(result);
     } else {
       await startRecording();
     }

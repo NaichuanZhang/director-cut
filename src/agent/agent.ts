@@ -1,47 +1,49 @@
-import type { Content, GenerateContentResponse, Part } from "@google/genai";
-import { ai } from "@/lib/gemini";
+import {
+  ConverseCommand,
+  ThrottlingException,
+  ServiceUnavailableException,
+  ModelTimeoutException,
+  type Message,
+  type ContentBlock,
+  type ConverseCommandOutput,
+} from "@aws-sdk/client-bedrock-runtime";
+import { bedrockRuntime } from "@/lib/bedrock";
 import { MODELS, MAX_TOOL_ROUNDS } from "@/lib/constants";
 import { SYSTEM_PROMPT } from "./system-prompt";
-import { functionDeclarations, executeTool } from "./tools";
+import { toolConfig, executeTool } from "./tools";
 import { log } from "@/lib/logger";
 import type { SSEEvent } from "@/lib/types";
 
-const RETRY_CODES = new Set([429, 503]);
 const MAX_RETRIES = 3;
 const RETRY_BASE_MS = 2_000;
 
-async function generateContentWithRetry(
-  ...args: Parameters<typeof ai.models.generateContent>
-): Promise<GenerateContentResponse> {
+async function converseWithRetry(
+  command: ConverseCommand,
+): Promise<ConverseCommandOutput> {
   for (let attempt = 0; ; attempt++) {
     try {
-      return await ai.models.generateContent(...args);
+      return await bedrockRuntime.send(command);
     } catch (error) {
-      const status = parseStatusCode(error);
-      if (
-        status === null ||
-        !RETRY_CODES.has(status) ||
-        attempt >= MAX_RETRIES
-      ) {
+      const isRetryable =
+        error instanceof ThrottlingException ||
+        error instanceof ServiceUnavailableException ||
+        error instanceof ModelTimeoutException;
+
+      if (!isRetryable || attempt >= MAX_RETRIES) {
         throw error;
       }
+
       const delayMs = RETRY_BASE_MS * 2 ** attempt;
       log.warn(
         "agent",
-        `Gemini ${status} — retrying in ${delayMs}ms (attempt ${attempt + 1}/${MAX_RETRIES})`,
+        `Bedrock error — retrying in ${delayMs}ms (attempt ${attempt + 1}/${MAX_RETRIES})`,
       );
       await new Promise((r) => setTimeout(r, delayMs));
     }
   }
 }
 
-function parseStatusCode(error: unknown): number | null {
-  if (!(error instanceof Error)) return null;
-  const match = error.message.match(/"code"\s*:\s*(\d+)/);
-  return match ? Number(match[1]) : null;
-}
-
-/** Strip base64 data URIs from tool results before feeding back to Gemini. */
+/** Strip base64 data URIs from tool results before feeding back to the model. */
 function summarizeForLLM(result: unknown): unknown {
   if (typeof result !== "object" || result === null) return result;
   const rec = result as Record<string, unknown>;
@@ -58,132 +60,124 @@ function summarizeForLLM(result: unknown): unknown {
 
 export async function* streamAgent(
   input: { type: "audio" | "text"; data: string },
-  history: readonly Content[],
+  history: readonly Message[],
 ): AsyncGenerator<SSEEvent> {
-  const contents: Content[] = [...history];
+  const messages: Message[] = [...history];
 
-  // Add user input — audio or text
-  if (input.type === "audio") {
-    contents.push({
-      role: "user",
-      parts: [{ inlineData: { data: input.data, mimeType: "audio/webm" } }],
-    });
-  } else {
-    contents.push({ role: "user", parts: [{ text: input.data }] });
-  }
+  // Add user input — text only (audio transcribed client-side)
+  messages.push({
+    role: "user",
+    content: [{ text: input.data }],
+  });
 
   log.info(
     "agent",
     `Starting agent loop — input.type=${input.type}, historyLength=${history.length}`,
   );
 
-  const config = {
-    tools: [{ functionDeclarations }],
-    systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-  };
-
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     log.debug(
       "agent",
-      `Round ${round + 1}/${MAX_TOOL_ROUNDS} — calling Gemini`,
+      `Round ${round + 1}/${MAX_TOOL_ROUNDS} — calling Bedrock`,
       {
         model: MODELS.AGENT,
-        contentsLength: contents.length,
+        messagesLength: messages.length,
       },
     );
 
-    const response = await generateContentWithRetry({
-      model: MODELS.AGENT,
-      contents,
-      config,
+    const command = new ConverseCommand({
+      modelId: MODELS.AGENT,
+      messages,
+      system: [{ text: SYSTEM_PROMPT }],
+      toolConfig,
     });
 
-    const candidate = response.candidates?.[0];
-    if (!candidate?.content) {
+    const response = await converseWithRetry(command);
+
+    const assistantMessage = response.output?.message;
+    if (!assistantMessage?.content) {
       log.warn(
         "agent",
-        `Round ${round + 1} — no candidate content, ending loop`,
-        {
-          candidatesCount: response.candidates?.length ?? 0,
-          finishReason: candidate?.finishReason,
-        },
+        `Round ${round + 1} — no assistant content, ending loop`,
+        { stopReason: response.stopReason },
       );
       break;
     }
 
     log.debug("agent", `Round ${round + 1} — response received`, {
-      partsCount: candidate.content.parts?.length ?? 0,
-      finishReason: candidate.finishReason,
+      blocksCount: assistantMessage.content.length,
+      stopReason: response.stopReason,
     });
 
-    // Push model response to conversation for next round
-    contents.push(candidate.content);
+    // Push assistant message to conversation for next round
+    messages.push(assistantMessage);
 
-    // Yield text parts
-    for (const part of candidate.content.parts ?? []) {
-      if (part.text) {
-        yield { type: "agent_text", text: part.text };
+    // Yield text blocks
+    for (const block of assistantMessage.content) {
+      if (block.text) {
+        yield { type: "agent_text", text: block.text };
       }
     }
 
-    // Check for function calls
-    const calls = response.functionCalls;
-    if (!calls || calls.length === 0) {
-      log.info("agent", `Round ${round + 1} — no function calls, ending loop`);
+    // Extract tool use blocks
+    const toolUseBlocks = assistantMessage.content.filter(
+      (b): b is ContentBlock & { toolUse: NonNullable<ContentBlock["toolUse"]> } =>
+        !!b.toolUse,
+    );
+
+    if (toolUseBlocks.length === 0) {
+      log.info("agent", `Round ${round + 1} — no tool calls, ending loop`);
       break;
     }
 
-    log.info("agent", `Round ${round + 1} — ${calls.length} tool call(s)`, {
-      tools: calls.map((c) => c.name),
+    log.info("agent", `Round ${round + 1} — ${toolUseBlocks.length} tool call(s)`, {
+      tools: toolUseBlocks.map((b) => b.toolUse.name),
     });
 
-    // Execute each function call, collect responses
-    const responseParts: Part[] = [];
+    // Execute each tool call, collect tool results
+    const toolResultContent: ContentBlock[] = [];
 
-    for (const call of calls) {
-      const sceneId = (call.args as Record<string, unknown>)?.scene_id;
+    for (const block of toolUseBlocks) {
+      const { toolUseId, name, input: toolInput } = block.toolUse;
+      const args = (toolInput ?? {}) as Record<string, unknown>;
+      const sceneId = args.scene_id as string | undefined;
 
       yield {
         type: "tool_start",
-        name: call.name,
-        args: call.args,
+        name,
+        args,
         sceneId,
       };
 
       const startMs = Date.now();
 
       try {
-        log.debug("agent", `Executing tool: ${call.name}`, {
-          sceneId,
-          args: call.args,
-        });
+        log.debug("agent", `Executing tool: ${name}`, { sceneId, args });
 
         const result = await executeTool(
-          call.name ?? "",
-          (call.args as Record<string, unknown>) ?? {},
+          name ?? "",
+          args,
           (sid: string, pct: number) => {
             // Note: can't yield from a callback in a generator
-            // Progress events are handled via the SSE writer in the route
           },
         );
 
         const durationMs = Date.now() - startMs;
-        log.info("agent", `Tool ${call.name} completed in ${durationMs}ms`, {
+        log.info("agent", `Tool ${name} completed in ${durationMs}ms`, {
           sceneId,
         });
 
         yield {
           type: "tool_done",
-          name: call.name,
+          name,
           result,
           sceneId,
         };
 
-        responseParts.push({
-          functionResponse: {
-            name: call.name,
-            response: { result: JSON.stringify(summarizeForLLM(result)) },
-            id: call.id ?? undefined,
+        toolResultContent.push({
+          toolResult: {
+            toolUseId,
+            content: [{ text: JSON.stringify(summarizeForLLM(result)) }],
           },
         });
       } catch (error) {
@@ -193,29 +187,29 @@ export async function* streamAgent(
 
         log.error(
           "agent",
-          `Tool ${call.name} FAILED after ${durationMs}ms`,
+          `Tool ${name} FAILED after ${durationMs}ms`,
           error,
         );
 
         yield {
           type: "tool_done",
-          name: call.name,
+          name,
           result: { error: message },
           sceneId,
         };
 
-        responseParts.push({
-          functionResponse: {
-            name: call.name,
-            response: { error: message },
-            id: call.id ?? undefined,
+        toolResultContent.push({
+          toolResult: {
+            toolUseId,
+            content: [{ text: JSON.stringify({ error: message }) }],
+            status: "error",
           },
         });
       }
     }
 
-    // Feed function results back to Gemini for next round
-    contents.push({ role: "user", parts: responseParts });
+    // Feed tool results back as a user message
+    messages.push({ role: "user", content: toolResultContent });
   }
 
   log.info("agent", "Agent loop finished");

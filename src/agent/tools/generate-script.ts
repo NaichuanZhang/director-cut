@@ -1,4 +1,5 @@
-import { ai } from "@/lib/gemini";
+import { ConverseCommand } from "@aws-sdk/client-bedrock-runtime";
+import { bedrockRuntime } from "@/lib/bedrock";
 import { MODELS, DEFAULT_NUM_SCENES } from "@/lib/constants";
 import { log } from "@/lib/logger";
 
@@ -18,9 +19,14 @@ export async function generateScript(
     descriptionLength: description.length,
   });
 
-  const response = await ai.models.generateContent({
-    model: MODELS.SCRIPT,
-    contents: `Generate exactly ${numScenes} cinematic scenes for this story concept: "${description}".
+  const command = new ConverseCommand({
+    modelId: MODELS.SCRIPT,
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            text: `Generate exactly ${numScenes} cinematic scenes for this story concept: "${description}".
 
 For each scene, provide:
 - title: A short, evocative scene title
@@ -29,40 +35,64 @@ For each scene, provide:
 - dialogueDirections: Detailed audio directions for video generation — include any character dialogue (with emotion/tone), sound effects, ambient sounds, and music cues
 
 Make the scenes flow as a cohesive narrative with a clear beginning, middle, and end.`,
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: "object",
-        properties: {
-          scenes: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                title: { type: "string" },
-                narrationText: { type: "string" },
-                visualDescription: { type: "string" },
-                dialogueDirections: { type: "string" },
+          },
+        ],
+      },
+    ],
+    system: [{ text: "You are a screenplay writer." }],
+    toolConfig: {
+      tools: [
+        {
+          toolSpec: {
+            name: "return_script",
+            description: "Return the generated script",
+            inputSchema: {
+              json: {
+                type: "object",
+                properties: {
+                  scenes: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        title: { type: "string" },
+                        narrationText: { type: "string" },
+                        visualDescription: { type: "string" },
+                        dialogueDirections: { type: "string" },
+                      },
+                      required: [
+                        "title",
+                        "narrationText",
+                        "visualDescription",
+                        "dialogueDirections",
+                      ],
+                    },
+                  },
+                },
+                required: ["scenes"],
               },
-              required: [
-                "title",
-                "narrationText",
-                "visualDescription",
-                "dialogueDirections",
-              ],
             },
           },
         },
-        required: ["scenes"],
-      },
+      ],
+      toolChoice: { tool: { name: "return_script" } },
     },
   });
 
-  const raw = response.text ?? "{}";
-  log.debug("generate_script", "Raw response", { textLength: raw.length });
+  const response = await bedrockRuntime.send(command);
+  const content = response.output?.message?.content ?? [];
+  const toolUseBlock = content.find((b) => b.toolUse);
 
-  const parsed = JSON.parse(raw);
-  const scenes: readonly ScriptScene[] = parsed.scenes ?? [];
+  if (!toolUseBlock?.toolUse?.input) {
+    log.error("generate_script", "No tool_use block in response", {
+      contentLength: content.length,
+      stopReason: response.stopReason,
+    });
+    throw new Error("Script generation failed — no structured output");
+  }
+
+  const input = toolUseBlock.toolUse.input as { scenes?: ScriptScene[] };
+  const scenes: readonly ScriptScene[] = input.scenes ?? [];
 
   log.info("generate_script", `Generated ${scenes.length} scenes`, {
     titles: scenes.map((s) => s.title),

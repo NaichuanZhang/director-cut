@@ -238,18 +238,4 @@ function handleToolResult(
       syncProjectMeta(projectId, store);
     }
   }
-
-  if (name === "generate_speech" && result?.sceneId) {
-    const sid = resolveSceneId(
-      store.getState().scenes,
-      result.sceneId as string,
-    );
-    if (sid) {
-      store.getState().updateScene(sid, {
-        audioUrl: result.audioUrl as string,
-        status: "complete",
-      });
-      syncProjectMeta(projectId, store);
-    }
-  }
 }
