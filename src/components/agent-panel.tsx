@@ -2,6 +2,8 @@
 
 import { useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { useProjectStore } from "@/stores/project-store-provider";
 import { VoiceOrb } from "./voice-orb";
 
@@ -125,13 +127,15 @@ export function AgentPanel() {
               ) : (
                 <div className="flex justify-start">
                   <div
-                    className="max-w-[90%] px-3 py-2 rounded-2xl rounded-bl-md text-sm leading-relaxed"
+                    className="markdown-content max-w-[90%] px-3 py-2 rounded-2xl rounded-bl-md text-sm leading-relaxed"
                     style={{
                       background: "var(--surface-2)",
                       color: "var(--text-secondary)",
                     }}
                   >
-                    {msg.content}
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {msg.content}
+                    </ReactMarkdown>
                   </div>
                 </div>
               )}
@@ -147,13 +151,15 @@ export function AgentPanel() {
             className="flex justify-start"
           >
             <div
-              className="max-w-[90%] px-3 py-2 rounded-2xl rounded-bl-md text-sm leading-relaxed"
+              className="markdown-content max-w-[90%] px-3 py-2 rounded-2xl rounded-bl-md text-sm leading-relaxed"
               style={{
                 background: "var(--surface-2)",
                 color: "var(--text-secondary)",
               }}
             >
-              {streamingText}
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {streamingText}
+              </ReactMarkdown>
               <span
                 className="inline-block w-1.5 h-4 ml-0.5 animate-pulse"
                 style={{ background: "var(--accent)" }}
