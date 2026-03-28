@@ -12,6 +12,8 @@ import type { ProjectStore } from "@/stores/project-store";
 let sceneCounter = 0;
 const nextSceneId = () => `scene-${++sceneCounter}`;
 
+let msgIdCounter = 0;
+
 const MAX_HISTORY_MESSAGES = 20;
 
 /** Convert client messages to Bedrock Message[] format for server-side context. */
@@ -83,7 +85,7 @@ export function useAgent() {
   const sendMessage = useCallback(
     async (input: { type: "audio" | "text"; data: string }) => {
       store.getState().setStreaming(true);
-      const userMsgId = `user-${Date.now()}`;
+      const userMsgId = `user-${++msgIdCounter}-${Date.now()}`;
       store.getState().addMessage({
         id: userMsgId,
         role: "user",
@@ -132,7 +134,7 @@ export function useAgent() {
         store.getState().flushStreamingText();
       } catch (err) {
         store.getState().addMessage({
-          id: `err-${Date.now()}`,
+          id: `err-${++msgIdCounter}-${Date.now()}`,
           role: "assistant",
           content: `Error: ${err instanceof Error ? err.message : "Unknown"}`,
           timestamp: Date.now(),
@@ -167,7 +169,7 @@ function handleEvent(
     case "tool_start":
       s().flushStreamingText();
       s().addMessage({
-        id: `tool-${Date.now()}`,
+        id: `tool-${++msgIdCounter}-${Date.now()}`,
         role: "tool",
         content: "",
         toolCall: {
@@ -199,7 +201,7 @@ function handleEvent(
     case "error":
       s().flushStreamingText();
       s().addMessage({
-        id: `err-${Date.now()}`,
+        id: `err-${++msgIdCounter}-${Date.now()}`,
         role: "assistant",
         content: `Error: ${event.message}`,
         timestamp: Date.now(),
