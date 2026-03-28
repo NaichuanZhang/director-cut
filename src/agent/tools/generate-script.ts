@@ -1,5 +1,6 @@
 import { ai } from "@/lib/gemini";
 import { MODELS, DEFAULT_NUM_SCENES } from "@/lib/constants";
+import { log } from "@/lib/logger";
 
 interface ScriptScene {
   readonly title: string;
@@ -12,6 +13,11 @@ export async function generateScript(
   description: string,
   numScenes: number = DEFAULT_NUM_SCENES,
 ): Promise<{ scenes: readonly ScriptScene[] }> {
+  log.info("generate_script", `Generating ${numScenes} scenes`, {
+    model: MODELS.SCRIPT,
+    descriptionLength: description.length,
+  });
+
   const response = await ai.models.generateContent({
     model: MODELS.SCRIPT,
     contents: `Generate exactly ${numScenes} cinematic scenes for this story concept: "${description}".
@@ -52,6 +58,15 @@ Make the scenes flow as a cohesive narrative with a clear beginning, middle, and
     },
   });
 
-  const parsed = JSON.parse(response.text ?? "{}");
-  return { scenes: parsed.scenes ?? [] };
+  const raw = response.text ?? "{}";
+  log.debug("generate_script", "Raw response", { textLength: raw.length });
+
+  const parsed = JSON.parse(raw);
+  const scenes: readonly ScriptScene[] = parsed.scenes ?? [];
+
+  log.info("generate_script", `Generated ${scenes.length} scenes`, {
+    titles: scenes.map((s) => s.title),
+  });
+
+  return { scenes };
 }
