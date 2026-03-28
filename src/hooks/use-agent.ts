@@ -228,11 +228,13 @@ function handleToolResult(
   const result = event.result as Record<string, unknown>;
 
   if (name === "generate_script" && result?.scenes) {
+    const existing = store.getState().scenes;
     const raw = result.scenes as Array<Record<string, string>>;
-    const scenes: Scene[] = raw.map((s, i) => ({
+    const startIndex = existing.length;
+    const newScenes: Scene[] = raw.map((s, i) => ({
       id: nextSceneId(),
-      index: i,
-      title: s.title ?? `Scene ${i + 1}`,
+      index: startIndex + i,
+      title: s.title ?? `Scene ${startIndex + i + 1}`,
       narrationText: s.narrationText ?? "",
       visualDescription: s.visualDescription ?? "",
       dialogueDirections: s.dialogueDirections ?? "",
@@ -242,13 +244,15 @@ function handleToolResult(
       videoPct: 0,
       status: "scripted",
     }));
-    store.getState().setScenes(scenes);
 
-    // Update project meta with title from first scene
-    const title = scenes[0]?.title ? `${scenes[0].title}…` : "Untitled Project";
+    const merged =
+      existing.length > 0 ? [...existing, ...newScenes] : newScenes;
+    store.getState().setScenes(merged);
+
+    const title = merged[0]?.title ? `${merged[0].title}…` : "Untitled Project";
     useProjectsStore.getState().updateProject(projectId, {
       updatedAt: Date.now(),
-      sceneCount: scenes.length,
+      sceneCount: merged.length,
       title,
     });
   }
