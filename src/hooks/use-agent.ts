@@ -230,6 +230,7 @@ function handleToolResult(
 
   if (name === "generate_script" && result?.scenes) {
     const existing = store.getState().scenes;
+    sceneCounter = Math.max(sceneCounter, existing.length);
     const raw = result.scenes as Array<Record<string, string>>;
     const startIndex = existing.length;
     const newScenes: Scene[] = raw.map((s, i) => ({
