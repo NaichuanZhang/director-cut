@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { useProjectsStore } from "@/stores/projects-store";
 import { ProjectCard } from "./project-card";
-import { idbStorage } from "@/lib/idb-storage";
+import { idbStorage, clearDatabase } from "@/lib/idb-storage";
 
 export function LandingPage() {
   const projects = useProjectsStore((s) => s.projects);
@@ -26,6 +26,13 @@ export function LandingPage() {
     });
     router.push(`/project/${id}`);
   }, [addProject, router]);
+
+  const handleClearAll = useCallback(async () => {
+    if (!window.confirm("Delete all projects and data? This cannot be undone."))
+      return;
+    await clearDatabase();
+    window.location.reload();
+  }, []);
 
   const handleDelete = useCallback(
     async (id: string) => {
@@ -56,7 +63,10 @@ export function LandingPage() {
         >
           <div
             className="w-8 h-8 mx-auto border-2 border-t-transparent rounded-full animate-spin"
-            style={{ borderColor: "var(--accent)", borderTopColor: "transparent" }}
+            style={{
+              borderColor: "var(--accent)",
+              borderTopColor: "transparent",
+            }}
           />
           <p
             className="text-xs tracking-widest uppercase"
@@ -135,7 +145,8 @@ export function LandingPage() {
               style={{
                 background: "var(--accent)",
                 color: "var(--text)",
-                boxShadow: "0 0 30px var(--accent-glow), 0 0 60px rgba(218,119,86,0.1)",
+                boxShadow:
+                  "0 0 30px var(--accent-glow), 0 0 60px rgba(218,119,86,0.1)",
               }}
             >
               <svg
@@ -236,7 +247,9 @@ export function LandingPage() {
                 {sorted.map((project, i) => (
                   <div
                     key={project.id}
-                    className={i === 0 && sorted.length > 2 ? "md:col-span-2" : ""}
+                    className={
+                      i === 0 && sorted.length > 2 ? "md:col-span-2" : ""
+                    }
                   >
                     <ProjectCard
                       project={project}
@@ -321,6 +334,19 @@ export function LandingPage() {
             </span>
           ),
         )}
+        <span
+          className="text-[10px] tracking-wider"
+          style={{ color: "var(--text-faint)" }}
+        >
+          |
+        </span>
+        <button
+          onClick={handleClearAll}
+          className="text-[10px] tracking-wider hover:underline cursor-pointer"
+          style={{ color: "var(--text-faint)" }}
+        >
+          Clear all data
+        </button>
       </footer>
     </div>
   );

@@ -32,6 +32,15 @@ function tx(mode: IDBTransactionMode): Promise<IDBObjectStore> {
   });
 }
 
+export function clearDatabase(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (isServer()) return resolve();
+    const req = indexedDB.deleteDatabase(DB_NAME);
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+  });
+}
+
 export const idbStorage: StateStorage = {
   getItem: async (key: string): Promise<string | null> => {
     if (isServer()) return null;
