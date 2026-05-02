@@ -9,6 +9,10 @@ export interface Scene {
   readonly videoUrl: string | null;
   readonly audioUrl: string | null;
   readonly videoPct: number;
+  /** Last frame from video generation, used for chaining to next scene */
+  readonly lastFrameBase64: string | null;
+  /** Current generation stage for enhanced progress display */
+  readonly videoStage: VideoGenerationStage;
   readonly status:
     | "empty"
     | "scripted"
@@ -17,6 +21,13 @@ export interface Scene {
     | "complete"
     | "error";
 }
+
+export type VideoGenerationStage =
+  | "idle"
+  | "queued"
+  | "processing"
+  | "rendering"
+  | "complete";
 
 export interface Message {
   readonly id: string;

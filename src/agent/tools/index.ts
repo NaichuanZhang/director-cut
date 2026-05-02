@@ -3,12 +3,37 @@ import { generateScript } from "./generate-script";
 import { generateImage } from "./generate-image";
 import { generateVideo } from "./generate-video";
 import { generateSpeech } from "./generate-speech";
+import { clearChainStore } from "@/lib/scene-chaining";
+import {
+  type DirectorSettings,
+  DEFAULT_DIRECTOR_SETTINGS,
+} from "@/lib/director-controls";
 
 /** Server-side cache of generated keyframe images (sceneId → base64 PNG). */
 const imageCache = new Map<string, string>();
 
+/** Ordered list of scene IDs for chaining context. */
+let sceneOrder: string[] = [];
+
+/** Current director settings (can be updated mid-session). */
+let currentSettings: DirectorSettings = DEFAULT_DIRECTOR_SETTINGS;
+
 export function clearImageCache(): void {
   imageCache.clear();
+  clearChainStore();
+  sceneOrder = [];
+}
+
+export function setDirectorSettings(settings: DirectorSettings): void {
+  currentSettings = settings;
+}
+
+export function getDirectorSettings(): DirectorSettings {
+  return currentSettings;
+}
+
+export function setSceneOrder(ids: string[]): void {
+  sceneOrder = ids;
 }
 
 export const toolConfig: ToolConfiguration = {
@@ -64,7 +89,7 @@ export const toolConfig: ToolConfiguration = {
       toolSpec: {
         name: "generate_video",
         description:
-          "Generate a cinematic video clip from a scene description. Call after generate_image.",
+          "Generate a cinematic video clip from a scene description using Seedance 2.0. Call after generate_image. Supports scene chaining for visual continuity.",
         inputSchema: {
           json: {
             type: "object",
@@ -121,11 +146,18 @@ export async function executeTool(
   onProgress?: (sceneId: string, pct: number) => void,
 ): Promise<unknown> {
   switch (name) {
-    case "generate_script":
-      return generateScript(
+    case "generate_script": {
+      const result = await generateScript(
         args.description as string,
         (args.num_scenes as number) ?? 3,
       );
+      // Track scene order for chaining
+      const scenes = (result as unknown as { scenes: { title: string }[] }).scenes;
+      if (scenes) {
+        sceneOrder = scenes.map((_, i) => `scene-${i}`);
+      }
+      return result;
+    }
     case "generate_image": {
       const result = await generateImage(
         args.scene_id as string,
@@ -142,14 +174,21 @@ export async function executeTool(
       }
       return result;
     }
-    case "generate_video":
+    case "generate_video": {
+      const sceneId = args.scene_id as string;
+      const sceneIndex = sceneOrder.indexOf(sceneId);
+
       return generateVideo(
-        args.scene_id as string,
+        sceneId,
         args.visual_description as string,
         args.dialogue_directions as string,
         onProgress,
-        imageCache.get(args.scene_id as string),
+        imageCache.get(sceneId),
+        sceneIndex >= 0 ? sceneIndex : undefined,
+        sceneOrder,
+        currentSettings,
       );
+    }
     case "generate_speech":
       return generateSpeech(args.scene_id as string, args.text as string);
     default:
