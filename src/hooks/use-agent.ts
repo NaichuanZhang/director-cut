@@ -242,6 +242,8 @@ function handleToolResult(
       videoUrl: null,
       audioUrl: null,
       videoPct: 0,
+      lastFrameBase64: null,
+      videoStage: "idle",
       status: "scripted",
     }));
 
@@ -283,6 +285,8 @@ function handleToolResult(
         store.getState().updateScene(sid, {
           videoUrl: result.videoUrl as string,
           videoPct: 100,
+          lastFrameBase64: (result.lastFrameBase64 as string) ?? null,
+          videoStage: "complete",
           status: "complete",
         });
       }

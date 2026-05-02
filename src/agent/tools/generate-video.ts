@@ -1,21 +1,53 @@
+/**
+ * Video Generation Tool — Seedance 2.0
+ *
+ * Generates cinematic video clips using the Seedance 2.0 model.
+ * Supports first-frame keyframe control, scene chaining, and configurable
+ * director settings (duration, resolution, camera, audio).
+ */
+
 import {
-  StartAsyncInvokeCommand,
-  GetAsyncInvokeCommand,
-} from "@aws-sdk/client-bedrock-runtime";
+  generateVideo as seedanceGenerate,
+  type SeedanceProgressInfo,
+} from "@/lib/seedance-client";
 import {
-  GetObjectCommand,
-  ListObjectsV2Command,
-  DeleteObjectsCommand,
-} from "@aws-sdk/client-s3";
-import { bedrockRuntime, s3 } from "@/lib/bedrock";
+  storeLastFrame,
+  getFirstFrameForScene,
+} from "@/lib/scene-chaining";
 import {
-  MODELS,
-  VIDEO_POLL_INTERVAL_MS,
-  VIDEO_MAX_WAIT_MS,
-  VIDEO_OUTPUT_S3_BUCKET,
-  VIDEO_OUTPUT_S3_PREFIX,
-} from "@/lib/constants";
+  type DirectorSettings,
+  DEFAULT_DIRECTOR_SETTINGS,
+} from "@/lib/director-controls";
 import { log } from "@/lib/logger";
+
+// ─── Types ──────────────────────────────────────────────────────────────────
+
+export interface VideoGenerationResult {
+  readonly sceneId: string;
+  readonly videoUrl: string;
+  readonly lastFrameBase64?: string;
+}
+
+export interface VideoGenerationOptions {
+  /** Scene ID */
+  readonly sceneId: string;
+  /** Visual description of what happens */
+  readonly visualDescription: string;
+  /** Audio/dialogue directions */
+  readonly dialogueDirections: string;
+  /** Progress callback */
+  readonly onProgress?: (sceneId: string, pct: number) => void;
+  /** Keyframe image (base64 PNG from image generation step) */
+  readonly keyframeBase64?: string;
+  /** Scene index in the project */
+  readonly sceneIndex?: number;
+  /** All scene IDs in order (for chaining) */
+  readonly allSceneIds?: readonly string[];
+  /** Director settings override */
+  readonly settings?: DirectorSettings;
+}
+
+// ─── Main Function ──────────────────────────────────────────────────────────
 
 export async function generateVideo(
   sceneId: string,
@@ -23,158 +55,97 @@ export async function generateVideo(
   dialogueDirections: string,
   onProgress?: (sceneId: string, pct: number) => void,
   keyframeBase64?: string,
-): Promise<{ sceneId: string; videoUrl: string }> {
-  const fullPrompt = `${visualDescription}. Audio directions: ${dialogueDirections}`;
-  const outputKey = `${VIDEO_OUTPUT_S3_PREFIX}${sceneId}-${Date.now()}`;
+  sceneIndex?: number,
+  allSceneIds?: readonly string[],
+  settings?: DirectorSettings,
+): Promise<VideoGenerationResult> {
+  const cfg = settings ?? DEFAULT_DIRECTOR_SETTINGS;
 
-  log.info("generate_video", `Starting video generation for ${sceneId}`, {
-    model: MODELS.VIDEO,
-    promptLength: fullPrompt.length,
+  // Build the prompt combining visual and audio directions
+  const prompt = `${visualDescription}. Audio directions: ${dialogueDirections}`;
+
+  log.info("generate_video", `Starting Seedance generation for ${sceneId}`, {
+    promptLength: prompt.length,
     hasKeyframe: !!keyframeBase64,
-    s3Bucket: VIDEO_OUTPUT_S3_BUCKET,
-    s3Key: outputKey,
+    sceneIndex,
+    duration: cfg.duration,
+    resolution: cfg.resolution,
+    chainScenes: cfg.chainScenes,
   });
 
-  const modelInput = keyframeBase64
-    ? {
-        prompt: fullPrompt,
-        keyframes: {
-          frame0: {
-            type: "image",
-            source: { type: "base64", data: keyframeBase64 },
-          },
-        },
-      }
-    : { prompt: fullPrompt };
+  // Determine the first frame using chaining logic
+  let firstFrame: string | undefined;
 
-  const startCommand = new StartAsyncInvokeCommand({
-    modelId: MODELS.VIDEO,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    modelInput: modelInput as any,
-    outputDataConfig: {
-      s3OutputDataConfig: {
-        s3Uri: `s3://${VIDEO_OUTPUT_S3_BUCKET}/${outputKey}`,
-      },
+  if (cfg.chainScenes && sceneIndex !== undefined && allSceneIds) {
+    firstFrame = getFirstFrameForScene(
+      sceneId,
+      sceneIndex,
+      allSceneIds,
+      keyframeBase64,
+    );
+  } else {
+    firstFrame = keyframeBase64;
+  }
+
+  // Generate the video
+  const result = await seedanceGenerate(
+    {
+      prompt,
+      duration: cfg.duration,
+      resolution: cfg.resolution,
+      ratio: cfg.aspectRatio,
+      cameraFixed: cfg.cameraFixed,
+      generateAudio: cfg.generateAudio,
+      returnLastFrame: cfg.chainScenes,
+      firstFrameBase64: firstFrame,
+      seed: cfg.seed,
     },
-  });
+    (info: SeedanceProgressInfo) => {
+      onProgress?.(sceneId, info.percent);
+    },
+  );
 
-  const startResponse = await bedrockRuntime.send(startCommand);
-  const invocationArn = startResponse.invocationArn;
-
-  if (!invocationArn) {
-    throw new Error(`Failed to start video generation for scene ${sceneId}`);
+  // Store last frame for chaining to next scene
+  if (result.lastFrameBase64 && cfg.chainScenes) {
+    storeLastFrame(sceneId, result.lastFrameBase64);
   }
 
-  log.debug("generate_video", `Async invocation started for ${sceneId}`, {
-    invocationArn,
+  // Download the video and convert to base64 data URI
+  const videoDataUri = await downloadVideoAsDataUri(result.videoUrl);
+
+  log.info("generate_video", `Video ready for ${sceneId}`, {
+    taskId: result.taskId,
+    hasLastFrame: !!result.lastFrameBase64,
   });
 
-  // Poll until done
-  let elapsed = 0;
-  let pollCount = 0;
+  onProgress?.(sceneId, 100);
 
-  while (elapsed < VIDEO_MAX_WAIT_MS) {
-    await new Promise((r) => setTimeout(r, VIDEO_POLL_INTERVAL_MS));
-    elapsed += VIDEO_POLL_INTERVAL_MS;
-    pollCount++;
+  return {
+    sceneId,
+    videoUrl: videoDataUri,
+    lastFrameBase64: result.lastFrameBase64,
+  };
+}
 
-    const pct = Math.min((elapsed / VIDEO_MAX_WAIT_MS) * 100, 95);
-    onProgress?.(sceneId, pct);
+// ─── Helpers ────────────────────────────────────────────────────────────────
 
-    log.debug("generate_video", `Polling ${sceneId} — attempt ${pollCount}`, {
-      elapsedMs: elapsed,
-      pct: Math.round(pct),
-    });
-
-    const getCommand = new GetAsyncInvokeCommand({ invocationArn });
-    const getResponse = await bedrockRuntime.send(getCommand);
-
-    if (getResponse.status === "Completed") {
-      const outputS3Uri =
-        getResponse.outputDataConfig?.s3OutputDataConfig?.s3Uri;
-      if (!outputS3Uri) {
-        throw new Error(`No output URI for video ${sceneId}`);
-      }
-
-      // Download video from S3 and convert to base64 data URI
-      const videoKey = `${parseS3Key(outputS3Uri)}/output.mp4`;
-      const videoBucket = parseS3Bucket(outputS3Uri);
-
-      log.debug("generate_video", `Downloading video for ${sceneId}`, {
-        bucket: videoBucket,
-        key: videoKey,
-      });
-
-      const getObj = await s3.send(
-        new GetObjectCommand({ Bucket: videoBucket, Key: videoKey }),
-      );
-      const bytes = await getObj.Body!.transformToByteArray();
-      const base64 = Buffer.from(bytes).toString("base64");
-
-      log.info("generate_video", `Video ready for ${sceneId}`, {
-        elapsedMs: elapsed,
-        pollCount,
-        sizeKB: Math.round(bytes.length / 1024),
-      });
-
-      // Clean up S3 objects after download
-      await deleteS3Prefix(videoBucket, parseS3Key(outputS3Uri));
-
-      return { sceneId, videoUrl: `data:video/mp4;base64,${base64}` };
-    }
-
-    if (getResponse.status === "Failed") {
-      log.error("generate_video", `Failed for ${sceneId}`, {
-        failureMessage: getResponse.failureMessage,
-      });
-      throw new Error(
-        `Video generation failed for scene ${sceneId}: ${getResponse.failureMessage ?? "unknown error"}`,
-      );
-    }
-  }
-
-  log.error("generate_video", `Timed out for ${sceneId}`, {
-    elapsedMs: elapsed,
-    pollCount,
-    maxWaitMs: VIDEO_MAX_WAIT_MS,
+async function downloadVideoAsDataUri(url: string): Promise<string> {
+  log.debug("generate_video", "Downloading video from URL", {
+    url: url.slice(0, 80),
   });
-  throw new Error(`Video generation timed out for scene ${sceneId}`);
-}
 
-function parseS3Bucket(s3Uri: string): string {
-  const match = s3Uri.match(/^s3:\/\/([^/]+)/);
-  if (!match) throw new Error(`Invalid S3 URI: ${s3Uri}`);
-  return match[1];
-}
+  const response = await fetch(url);
 
-function parseS3Key(s3Uri: string): string {
-  const match = s3Uri.match(/^s3:\/\/[^/]+\/(.+)$/);
-  if (!match) throw new Error(`Invalid S3 URI: ${s3Uri}`);
-  return match[1];
-}
-
-async function deleteS3Prefix(bucket: string, prefix: string): Promise<void> {
-  try {
-    const listed = await s3.send(
-      new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix }),
-    );
-    const objects = listed.Contents;
-    if (!objects || objects.length === 0) return;
-
-    await s3.send(
-      new DeleteObjectsCommand({
-        Bucket: bucket,
-        Delete: { Objects: objects.map((o) => ({ Key: o.Key })) },
-      }),
-    );
-    log.debug("generate_video", `Cleaned up ${objects.length} S3 objects`, {
-      prefix,
-    });
-  } catch (error) {
-    // Non-fatal — log and continue
-    log.warn("generate_video", "Failed to clean up S3 objects", {
-      prefix,
-      error,
-    });
+  if (!response.ok) {
+    throw new Error(`Failed to download video: ${response.status}`);
   }
+
+  const buffer = await response.arrayBuffer();
+  const base64 = Buffer.from(buffer).toString("base64");
+
+  log.debug("generate_video", "Video downloaded", {
+    sizeKB: Math.round(buffer.byteLength / 1024),
+  });
+
+  return `data:video/mp4;base64,${base64}`;
 }
